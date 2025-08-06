@@ -1,0 +1,94 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpException,
+  HttpStatus,
+  InternalServerErrorException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFiles,
+  UseFilters,
+  UseInterceptors,
+} from '@nestjs/common';
+import { AppService } from '../app.service';
+import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { SwaggerApiEnumTags } from '../common/index.enum';
+import {
+  CreateReconciliationJobDto,
+  ReconciliationJobFilterDto,
+} from 'src/dtos/reconciliationJob.dto';
+import { HttpExceptionFilter } from 'src/middleware/exception.filter';
+import { ReconciliationJobService } from 'src/services/reconciliationJob.service';
+import { PaginatedRecordsDto, PaginationDto } from 'src/dtos/pagination.dto';
+import { ReconciliationJob } from 'src/entities/reconciliationJob.entity';
+import {
+  FilesTypes,
+  ReconciliationreturnType,
+  StandardResopnse,
+} from 'src/common';
+import { Public } from 'src/decorators/skipAuth.decorator';
+import {
+  FileFieldsInterceptor,
+  FileInterceptor,
+  FilesInterceptor,
+} from '@nestjs/platform-express';
+import { fileMulterOptions } from 'src/common/mutler.config';
+import { ReconciliationFileParamDto } from 'src/dtos/reconciliationFile.dto';
+
+@Controller('reconcile')
+@ApiTags(SwaggerApiEnumTags.ReconciliationJob)
+@ApiBearerAuth()
+export class ReconciliationJobController {
+  constructor(
+    private readonly ReconciliationJobService: ReconciliationJobService,
+  ) {}
+
+  @Post()
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'upload1', maxCount: 1 },
+        { name: 'upload2', maxCount: 1 },
+      ],
+      fileMulterOptions,
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  createReconciliationJob(
+    @Body() createReconciliationJobDto: CreateReconciliationJobDto,
+    @UploadedFiles()
+    files: FilesTypes,
+  ): Promise<StandardResopnse<ReconciliationJob>> {
+
+    return this.ReconciliationJobService.createReconciliationJob(
+      createReconciliationJobDto,
+      files,
+    );
+  }
+
+  @Get()
+  findAllReconciliationJob(
+    @Query() paginationDto: PaginationDto,
+    @Query() reconciliationJobFilterDto: ReconciliationJobFilterDto,
+  ): Promise<StandardResopnse<PaginatedRecordsDto<ReconciliationJob>>> {
+    return this.ReconciliationJobService.findReconciliationJobs(
+      paginationDto,
+      reconciliationJobFilterDto,
+    );
+  }
+
+  @Get(':id')
+  findAllReconciliationJobResult(
+    @Param() reconciliationFileParamDto: ReconciliationFileParamDto,
+  ): Promise<StandardResopnse<ReconciliationreturnType>> {
+    return this.ReconciliationJobService.getReconciliationJobresult(
+      reconciliationFileParamDto?.id,
+    );
+  }
+}
