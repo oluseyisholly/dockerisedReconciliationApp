@@ -1,10 +1,10 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { plainToInstance } from 'class-transformer';
 import {
   FilesTypes,
   ReconciliationreturnType,
@@ -17,21 +17,17 @@ import {
 } from 'src/dtos/reconciliationJob.dto';
 import { ReconciliationFile } from 'src/entities/reconciliationFile.entity';
 import { ReconciliationJob } from 'src/entities/reconciliationJob.entity';
-import { reconciliationQueue } from 'src/queue/reconciliation.queue';
 import { ReconciliationFileRepository } from 'src/repositories/reconciliationFile.repository';
 import { ReconciliationJobRepository } from 'src/repositories/reconciliationJob.repository';
 import { readJsonArray } from 'src/utils/json_object_parse';
 
 @Injectable()
 export class ReconciliationJobService {
-  private queue: Queue;
-
   constructor(
     private reconciliationJobRepository: ReconciliationJobRepository,
     private reconciliationFileRepository: ReconciliationFileRepository,
-  ) {
-    this.queue = reconciliationQueue;
-  }
+    @InjectQueue('reconciliation') private reconciliationQueue: Queue,
+  ) {}
 
   async createReconciliationJob(
     createReconciliationJobDto: CreateReconciliationJobDto,
@@ -41,9 +37,8 @@ export class ReconciliationJobService {
       throw new BadRequestException('Two files are required.');
     }
 
-
     // Add job to queue
-    const job = await this.queue.add('reconcile', {
+    const job = await this.reconciliationQueue.add('reconcile', {
       fileAPath: files.upload1[0].path,
       fileBPath: files.upload2[0].path,
       name: createReconciliationJobDto.name,
@@ -73,45 +68,12 @@ export class ReconciliationJobService {
     await this.reconciliationFileRepository.save(flleData1);
     await this.reconciliationFileRepository.save(flleData2);
 
-    return new StandardResopnse();
+    return {
+      data: null,
+      code: 200,
+      message: 'success',
+    };
   }
-
-  //   async updateReconciliationJob(id: number, updateUser: UpdateUser) {
-  //     const existingUser = await this.userRepository.findById(id);
-
-  //     if (!existingUser) {
-  //       throw new NotFoundException('User Not found');
-  //     }
-
-  //     Object.assign(existingUser, updateUser);
-
-  //     await this.userRepository.createUser({
-  //       ...existingUser,
-  //       updatedAt: new Date().toISOString(),
-  //     });
-
-  //     return {
-  //       data: plainToInstance(User, updateUser),
-  //       code: 200,
-  //       message: 'Success',
-  //     };
-  //   }
-
-  //   async deleteReconciliationJobs(id: number) {
-  //     const existingUser = await this.userRepository.findById(id);
-
-  //     if (!existingUser) {
-  //       throw new NotFoundException('User Not found');
-  //     }
-
-  //     const result = await this.userRepository.deleteById(id);
-
-  //     return {
-  //       data: result,
-  //       code: 200,
-  //       message: 'Success',
-  //     };
-  //   }
 
   async findReconciliationJobs(
     paginationDto: PaginationDto,
@@ -133,10 +95,15 @@ export class ReconciliationJobService {
     const existingReconciliationJob =
       await this.reconciliationJobRepository.findById(id);
 
-
     if (!existingReconciliationJob) {
       throw new NotFoundException('Not Found');
     }
+
+     if (!existingReconciliationJob.reportPath) {
+      throw new NotFoundException('file not found');
+    }
+
+
 
     const data = readJsonArray(existingReconciliationJob.reportPath);
 
@@ -146,6 +113,4 @@ export class ReconciliationJobService {
       message: 'Success',
     };
   }
-
-  private async reconciliator() {}
 }

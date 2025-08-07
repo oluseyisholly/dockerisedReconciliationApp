@@ -1,24 +1,26 @@
 // reconciliation.processor.ts
-import { Worker } from 'bullmq';
-import { redisConfig } from '../redis.config';
+import { Job } from 'bullmq';
 import { parseCsv } from 'src/utils/csv_parser';
 import { Transaction } from 'typeorm';
 import { writeJsonFile } from 'src/utils/object_json_parser';
 import { ReconciliationJobType } from 'src/common';
-import AppDataSource from 'src/config/data-source';
-import { ReconciliationJob } from 'src/entities/reconciliationJob.entity';
 import { updateJobStatus } from './updateReconciliationJob';
 import { ReconciliationJobStatusEnum } from 'src/common/index.enum';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Injectable } from '@nestjs/common';
 
-const worker = new Worker(
-  'reconciliation',
-  async (job) => {
+@Processor('reconciliation')
+@Injectable()
+export class ReconciliationProcessor extends WorkerHost {
+  constructor() {
+    super();
+  }
+
+  async process(job: Job<ReconciliationJobType>): Promise<string> {
     const { fileAPath, fileBPath, name } = job.data as ReconciliationJobType;
 
     const fileAMap = await parseCsv(fileAPath);
     const fileBMap = await parseCsv(fileBPath);
-
-    console.log(fileAMap, fileBMap);
 
     const missingInB: Transaction[] = [];
     const missingInA: Transaction[] = [];
@@ -63,23 +65,23 @@ const worker = new Worker(
     };
 
     return writeJsonFile(`${name} reconciliation_result.json`, report);
-  },
-  { connection: redisConfig },
-);
+  }
 
-worker.on('active', async (job) => {
-  await updateJobStatus(job.id, ReconciliationJobStatusEnum.PROCESSING);
-});
+  @OnWorkerEvent('active')
+  onActive(job: Job) {
+    updateJobStatus(job.id, ReconciliationJobStatusEnum.PROCESSING);
+  }
 
-// ✅ Handle job success
-worker.on('completed', (job, result) => {
-  updateJobStatus(job.id, ReconciliationJobStatusEnum.COMPLETED, result);
-  console.log(`✅ Job ${job.id} completed.`);
-  console.log('Reconciliation Report:', result);
-});
+  @OnWorkerEvent('completed')
+  Oncompleted(job: Job,  result: any) {
+    updateJobStatus(job.id, ReconciliationJobStatusEnum.COMPLETED, result);
+  
+    console.log(`✅ Job ${job.id} completed.`);
+  }
 
-// ❌ Handle job failure
-worker.on('failed', (job, err) => {
-  updateJobStatus(job.id, ReconciliationJobStatusEnum.FAILED);
-  console.error(`❌ Job ${job?.id} failed with error:`, err);
-});
+  @OnWorkerEvent('failed')
+  OnFailed(job: Job, err: any) {
+    updateJobStatus(job.id, ReconciliationJobStatusEnum.FAILED);
+    console.error(`❌ Job ${job?.id} failed with error:`, err);
+  }
+}
